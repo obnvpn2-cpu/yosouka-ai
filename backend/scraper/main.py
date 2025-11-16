@@ -1,5 +1,5 @@
 """
-メインスクレイピングスクリプト
+メインスクレイピングスクリプト（--limit, --offset対応版）
 """
 from backend.scraper.predictor_list import PredictorListScraper
 from backend.scraper.prediction import PredictionScraper
@@ -7,6 +7,7 @@ from backend.database import SessionLocal, init_db
 from backend.models.database import Predictor, Prediction, Race
 from loguru import logger
 import sys
+import argparse
 from datetime import datetime
 
 
@@ -138,7 +139,16 @@ def save_predictions(predictor_id: int, predictions_data: list):
 
 def main():
     """メイン処理"""
+    # 引数パーサーを設定
+    parser = argparse.ArgumentParser(description='競馬予想家スクレイピング')
+    parser.add_argument('--limit', type=int, default=None, help='処理する予想家の数')
+    parser.add_argument('--offset', type=int, default=0, help='開始位置（スキップする予想家の数）')
+    parser.add_argument('--test', action='store_true', help='テストモード（最初の5人のみ）')
+    
+    args = parser.parse_args()
+    
     logger.info("Starting scraping process...")
+    logger.info(f"Arguments: limit={args.limit}, offset={args.offset}, test={args.test}")
     
     # データベースを初期化（初回のみ）
     try:
@@ -169,18 +179,30 @@ def main():
     prediction_scraper = PredictionScraper()
     prediction_scraper.login()
     
-    # テスト用：最初の5人のみ処理（フルバージョンでは全員処理）
-    test_mode = "--test" in sys.argv
-    limit = 5 if test_mode else len(predictors)
-    
-    if test_mode:
+    # 処理範囲を決定
+    if args.test:
+        # テストモード：最初の5人
+        start_idx = 0
+        end_idx = min(5, len(predictors))
         logger.info("Running in TEST mode - processing first 5 predictors only")
+    else:
+        # 通常モード：offset と limit を使用
+        start_idx = args.offset
+        if args.limit:
+            end_idx = min(start_idx + args.limit, len(predictors))
+        else:
+            end_idx = len(predictors)
     
-    for i, predictor_data in enumerate(predictors[:limit], 1):
+    target_predictors = predictors[start_idx:end_idx]
+    total_count = len(target_predictors)
+    
+    logger.info(f"Processing predictors {start_idx+1} to {end_idx} ({total_count} predictors)")
+    
+    for i, predictor_data in enumerate(target_predictors, 1):
         predictor_id = predictor_data['netkeiba_id']
         predictor_name = predictor_data['name']
         
-        logger.info(f"[{i}/{limit}] Processing predictor: {predictor_name} (ID: {predictor_id})")
+        logger.info(f"[{i}/{total_count}] Processing predictor: {predictor_name} (ID: {predictor_id})")
         
         # 予想履歴を取得
         predictions = prediction_scraper.get_predictor_predictions(predictor_id, limit=50)
@@ -192,17 +214,19 @@ def main():
             logger.warning(f"No predictions found for predictor {predictor_id}")
     
     logger.info("Scraping process completed!")
-    logger.info(f"Processed {limit} predictors")
+    logger.info(f"Processed {total_count} predictors (from index {start_idx+1} to {end_idx})")
     
     # 統計を表示
     db = SessionLocal()
     try:
         total_predictors = db.query(Predictor).count()
+        processed_predictors = db.query(Predictor).filter(Predictor.total_predictions > 0).count()
         total_predictions = db.query(Prediction).count()
         high_reliability = db.query(Predictor).filter(Predictor.data_reliability == "high").count()
         
         logger.info(f"\n=== Statistics ===")
-        logger.info(f"Total predictors: {total_predictors}")
+        logger.info(f"Total predictors in DB: {total_predictors}")
+        logger.info(f"Processed predictors: {processed_predictors}/{total_predictors}")
         logger.info(f"Total predictions: {total_predictions}")
         logger.info(f"High reliability predictors: {high_reliability}")
         
