@@ -286,18 +286,18 @@ taskkill /F /IM chromedriver.exe /T
 
 1. **このファイル（CURRENT_STATUS.md）をアップロード**
 2. **現在の進捗を確認**:
-   ```bash
-   python << 'EOF'
-   import sqlite3
-   conn = sqlite3.connect('data/keiba.db')
-   cursor = conn.cursor()
-   cursor.execute("SELECT COUNT(*) FROM predictors WHERE total_predictions > 0")
-   processed = cursor.fetchone()[0]
-   print(f"処理済み: {processed}/186人")
-   print(f"次: python backend/scraper/main.py --limit 10 --offset {processed}")
-   conn.close()
-   EOF
-   ```
+  ```bash
+python << 'EOF'
+import sqlite3
+conn = sqlite3.connect('data/keiba.db')
+cursor = conn.cursor()
+cursor.execute("SELECT COUNT(*) FROM predictors WHERE total_predictions > 0")
+processed = cursor.fetchone()[0]
+print(f"処理済み: {processed}/186人")
+print(f"次: python backend/scraper/main.py --limit 10 --offset {processed}")
+conn.close()
+EOF
+  ```
 3. **作業を継続**
 
 ---

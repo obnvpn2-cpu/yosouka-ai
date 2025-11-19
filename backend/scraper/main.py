@@ -1,12 +1,19 @@
 """
 メインスクレイピングスクリプト（--limit, --offset対応版）
 """
+import sys
+import os
+
+# プロジェクトルートをsys.pathに追加（ModuleNotFoundError対策）
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from backend.scraper.predictor_list import PredictorListScraper
 from backend.scraper.prediction import PredictionScraper
 from backend.database import SessionLocal, init_db
 from backend.models.database import Predictor, Prediction, Race
 from loguru import logger
-import sys
 import argparse
 from datetime import datetime
 
@@ -196,13 +203,15 @@ def main():
     target_predictors = predictors[start_idx:end_idx]
     total_count = len(target_predictors)
     
-    logger.info(f"Processing predictors {start_idx+1} to {end_idx} ({total_count} predictors)")
+    logger.info(f"Processing predictors [{start_idx}:{end_idx}] ({total_count} predictors)")
+    logger.info(f"Total predictors in list: {len(predictors)}")
     
     for i, predictor_data in enumerate(target_predictors, 1):
         predictor_id = predictor_data['netkeiba_id']
         predictor_name = predictor_data['name']
+        actual_index = start_idx + i - 1
         
-        logger.info(f"[{i}/{total_count}] Processing predictor: {predictor_name} (ID: {predictor_id})")
+        logger.info(f"[{i}/{total_count}] [index {actual_index}] Processing: {predictor_name} (ID: {predictor_id})")
         
         # 予想履歴を取得
         predictions = prediction_scraper.get_predictor_predictions(predictor_id, limit=50)
@@ -214,7 +223,16 @@ def main():
             logger.warning(f"No predictions found for predictor {predictor_id}")
     
     logger.info("Scraping process completed!")
-    logger.info(f"Processed {total_count} predictors (from index {start_idx+1} to {end_idx})")
+    logger.info(f"Processed {total_count} predictors [index {start_idx} to {end_idx-1}]")
+    
+    # 次のoffsetを明示的に表示
+    if end_idx < len(predictors):
+        logger.info(f"✅ Next offset: {end_idx}")
+        logger.info(f"✅ Next command: python backend/scraper/main.py --limit 10 --offset {end_idx}")
+        remaining = len(predictors) - end_idx
+        logger.info(f"📊 Remaining: {remaining} predictors")
+    else:
+        logger.info("🎉 All predictors in list have been processed!")
     
     # 統計を表示
     db = SessionLocal()
