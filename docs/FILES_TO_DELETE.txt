@@ -1,0 +1,9 @@
+# 削除推奨ファイルリスト
+# 作成日: 2025/11/23 12:58:10
+# 以下のファイルは古い情報のため、削除を推奨します
+
+DATA_COLLECTION_ROADMAP.md
+FAILED_PREDICTORS.md
+NEXT_STEPS.md
+OPTION_A_GUIDE.md
+PLAYWRIGHT_MIGRATION.md
