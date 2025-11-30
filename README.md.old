@@ -4,13 +4,14 @@ netkeiba掲載の予想家の過去成績を分析し、重賞レースにおけ
 
 ---
 
-## 📊 プロジェクト現状（2025/11/23）
+## 📊 プロジェクト現状（2025/11/30）
 
-- **進捗**: Phase 3 - race_id更新・レース詳細取得フェーズ
+- **進捗**: Phase 3-1完了 → Phase 3-2準備完了
 - **予想家データ**: 187/186人完了（100%）✅
-- **総予想数**: 9,329件
-- **race_id更新**: 進行中（自動バッチ処理実行中）
-- **レース詳細情報**: 未取得
+- **有効予想数**: 9,262件 ✅
+- **重賞予想数**: 1,619件 ✅
+- **race_id更新**: 完了（99.3%）✅
+- **レース詳細情報**: 0/997件 ⏳
 
 詳細は [CURRENT_STATUS.md](CURRENT_STATUS.md) を参照
 
@@ -23,9 +24,9 @@ netkeiba掲載の予想家の過去成績を分析し、重賞レースにおけ
 
 ### データソース
 - netkeiba.com（予想家の過去予想データ）
-- 予想家1人あたり過去50件の予想を収集
+- 予想家187人、予想9,262件を収集済み
 
-### 主な機能（予定）
+### 主な機能（実装予定）
 1. 予想家の過去成績分析
 2. 重賞レースでの的中率・回収率計算
 3. レース条件に基づく予想家推薦
@@ -55,23 +56,23 @@ netkeiba掲載の予想家の過去成績を分析し、重賞レースにおけ
 keiba-yosoka-ai/
 ├── backend/
 │   ├── scraper/
-│   │   ├── main.py                    # 予想家データ取得
-│   │   ├── prediction.py              # 予想履歴スクレイパー
-│   │   ├── race_detail_scraper.py     # レース詳細スクレイパー
-│   │   ├── update_race_ids_v2.py      # race_id更新
-│   │   └── batch_update_race_ids_v2.py # 一括更新（実行中）
+│   │   ├── main.py                    ✅ 予想家データ取得
+│   │   ├── prediction.py              ✅ 予想履歴取得
+│   │   ├── update_race_ids_v2.py      ✅ race_id更新
+│   │   ├── batch_update_race_ids_v2.py ✅ 一括更新
+│   │   └── race_detail_scraper.py     ⏳ レース詳細取得
 │   ├── models/
 │   │   └── database.py                # データベースモデル
 │   └── database.py                    # DB接続
 ├── data/
 │   └── keiba.db                       # SQLiteデータベース
 ├── logs/                              # 実行ログ
-├── docs/
-│   └── archive/                       # 過去のドキュメント
+├── docs/                              # ドキュメント
 ├── drivers/
 │   └── chromedriver.exe               # Selenium用
 ├── venv/                              # Python仮想環境
 ├── .env                               # 環境変数（認証情報）
+├── check_db_status.py                 # 進捗確認スクリプト
 ├── README.md                          # このファイル
 ├── CURRENT_STATUS.md                  # 現在の詳細状況
 └── PROJECT_SUMMARY.md                 # プロジェクトサマリー
@@ -110,30 +111,44 @@ cd ~/デスクトップ/repo/keiba-yosoka-ai
 python check_db_status.py
 ```
 
+**出力例**:
+```
+処理済み予想家: 187/186人 (100.5%)
+有効な予想数: 9,262件
+重賞予想数: 1,619件
+temp形式のrace_id: 67件
+正しいrace_id: 997件
+レース詳細: 0/997件（次のタスク）
+```
+
 ---
 
 ## 📈 開発フェーズ
 
 - [x] **Phase 1**: プロジェクトセットアップ ✅
 - [x] **Phase 2**: 予想家データ取得（187人完了）✅
-- [x] **Phase 3-1**: race_id更新（進行中）🔄
-- [ ] **Phase 3-2**: レース詳細情報取得
+- [x] **Phase 3-1**: race_id更新（99.3%完了）✅
+- [ ] **Phase 3-2**: レース詳細情報取得 ⏳
 - [ ] **Phase 4**: 分析機能実装
 - [ ] **Phase 5**: API実装
 - [ ] **Phase 6**: フロントエンド実装
 - [ ] **Phase 7**: デプロイ
 
-### 現在のフェーズ詳細（Phase 3-1）
+### 現在のフェーズ詳細（Phase 3-2）
 
-**目的**: 仮のrace_id（temp形式）を正しい12桁のrace_idに更新
+**目的**: 997件のレースについて詳細情報を取得
 
-**進行状況**:
-- temp形式のrace_id: 約8,900件
-- 正しいrace_id: 約200件
-- 自動バッチ処理実行中
+**取得する情報**:
+- レース基本情報（距離、トラック、天候、馬場状態）
+- レース結果（着順、タイム、オッズ）
+- 払い戻し情報
+- ラップタイム
 
 **使用スクリプト**:
-- `batch_update_race_ids_v2.py` - 自動一括更新
+- `race_detail_scraper.py` - レース詳細取得
+- `batch_update_race_details.py` - 一括更新（作成予定）
+
+**推定所要時間**: 3-4時間
 
 ---
 
@@ -141,7 +156,7 @@ python check_db_status.py
 
 ### 主要テーブル
 
-#### Predictors（予想家）
+#### Predictors（予想家）- 187人
 ```sql
 - id: INTEGER PRIMARY KEY
 - netkeiba_id: INTEGER UNIQUE
@@ -151,7 +166,7 @@ python check_db_status.py
 - data_reliability: TEXT (low/medium/high)
 ```
 
-#### Predictions（予想）
+#### Predictions（予想）- 9,262件（有効）
 ```sql
 - id: INTEGER PRIMARY KEY
 - predictor_id: INTEGER (FK)
@@ -162,16 +177,16 @@ python check_db_status.py
 - roi: FLOAT
 ```
 
-#### Races（レース）
+#### Races（レース）- 997件
 ```sql
 - id: INTEGER PRIMARY KEY
-- race_id: TEXT UNIQUE
+- race_id: TEXT UNIQUE（12桁）
 - race_name: TEXT
 - race_date: DATETIME
 - venue: TEXT
 - grade: TEXT (G1/G2/G3)
-- distance: INTEGER
-- track_type: TEXT (芝/ダート)
+- distance: INTEGER（未取得）
+- track_type: TEXT（未取得）
 - is_grade_race: BOOLEAN
 ```
 
@@ -184,20 +199,20 @@ python check_db_status.py
 python check_db_status.py
 ```
 
-### race_id更新（個別実行）
+### レース詳細取得（テスト）
 ```bash
-python update_race_ids_v2.py --limit 10 --offset 0
+python race_detail_scraper.py
 ```
 
-### race_id一括更新（バッチ処理）
+### レース詳細一括取得（次のタスク）
 ```bash
-python batch_update_race_ids_v2.py --batch-size 100
+python batch_update_race_details.py --batch-size 100
 ```
 
 ### ログ確認
 ```bash
 # 最新ログ
-tail -100 logs/batch_update_race_ids_*.log
+tail -100 logs/*.log
 
 # エラー確認
 grep "ERROR" logs/*.log
@@ -209,12 +224,13 @@ grep "ERROR" logs/*.log
 
 ### アクセス制限
 - netkeiba.comへのアクセスは適切な間隔で実行
-- 各リクエスト後に2-3秒待機
+- 各リクエスト後に2秒待機
 - バッチ処理は100件ごとに30秒休憩
 
 ### データの正確性
-- 未来のレース予想には的中情報なし（is_hit=0, payout=0）
-- 分析時は過去のレースのみフィルタリング
+- 有効な予想: 9,262件（temp形式67件を除く）
+- 重賞予想: 1,619件（分析に十分）
+- 未来のレース予想には的中情報なし
 
 ### 環境
 - Python 3.12以上推奨
@@ -249,7 +265,7 @@ ls -lt logs/  # 最新のログファイルを確認
 - [CURRENT_STATUS.md](CURRENT_STATUS.md) - 現在の詳細状況
 - [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md) - プロジェクトサマリー
 - [RACE_DETAIL_SCRAPER_GUIDE.md](RACE_DETAIL_SCRAPER_GUIDE.md) - レース詳細スクレイパーガイド
-- [新しいチャットでの再開ガイド.md](新しいチャットでの再開ガイド.md) - チャット再開手順
+- [NEW_CHAT_START_GUIDE.md](NEW_CHAT_START_GUIDE.md) - 新しいチャット開始ガイド
 
 ---
 
@@ -275,5 +291,25 @@ ls -lt logs/  # 最新のログファイルを確認
 
 ---
 
-**最終更新**: 2025/11/23  
-**プロジェクト進捗**: Phase 3-1 実行中
+## 🎯 次のステップ
+
+1. **レース詳細取得**（Phase 3-2）
+   - `batch_update_race_details.py` 作成
+   - 997件のレース詳細を自動取得
+
+2. **データ分析**（Phase 4）
+   - 的中率・回収率の計算
+   - 重賞に強い予想家の特定
+   - ランキング生成
+
+3. **API実装**（Phase 5）
+   - FastAPIエンドポイント作成
+   - 予想家検索API
+   - ランキングAPI
+
+---
+
+**最終更新**: 2025/11/30  
+**プロジェクト進捗**: Phase 3-1完了 → Phase 3-2準備完了
+
+🎉 **現在の達成率: 約60%**

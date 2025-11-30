@@ -20,8 +20,8 @@ python -m venv venv
 
 3. 仮想環境を有効化
 ```bash
-# Windowsの場合
-venv\Scripts\activate
+# Git Bashの場合
+source venv/Scripts/activate
 
 # PowerShellの場合（実行ポリシーエラーが出たら下記を実行）
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -31,20 +31,25 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ```bash
 pip install -r requirements.txt
+
+# 追加で必要なパッケージ
+pip install loguru
 ```
 
 ## ステップ3: 環境設定
 
 1. `.env.example`を`.env`にコピー
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
-2. `.env`ファイルを編集してnetkeiba認証情報を設定
+2. `.env`ファイルを編集してnetkeiba認証情報を設定（オプション）
 ```
 NETKEIBA_USERNAME=あなたのユーザー名
 NETKEIBA_PASSWORD=あなたのパスワード
 ```
+
+**注意**: Phase 3-2（レース詳細取得）ではログイン不要です。
 
 ## ステップ4: データベースの初期化
 
@@ -52,25 +57,25 @@ NETKEIBA_PASSWORD=あなたのパスワード
 python backend/init_db.py
 ```
 
-## ステップ5: テスト実行
+## ステップ5: Phase 3-2の実行
 
-最初は少数の予想家でテスト実行します：
+現在は Phase 3-2（レース詳細取得）を実行中です：
 
+### 進捗確認
 ```bash
-python -m backend.scraper.main --test
+python check_race_progress.py
 ```
 
-これにより最初の5人の予想家のデータが取得されます。
-
-## ステップ6: フル実行
-
-テストが成功したら、全予想家のデータを取得：
-
+### レース詳細取得
 ```bash
-python -m backend.scraper.main
-```
+# 100件ずつ処理（推奨）
+python batch_race_detail.py --limit 100
 
-⚠️ 注意: 全予想家の取得には時間がかかります（数時間〜）
+# 進捗確認
+python check_race_progress.py
+
+# 繰り返し...
+```
 
 ## トラブルシューティング
 
@@ -78,32 +83,48 @@ python -m backend.scraper.main
 
 仮想環境が有効化されていることを確認してください。
 ```bash
-venv\Scripts\activate
+source venv/Scripts/activate
 ```
 
-### エラー: ログインに失敗
+### エラー: loguru not found
 
-1. `.env`ファイルの認証情報が正しいか確認
-2. netkeiba.comで実際にログインできるか確認
-3. 有料会員でないとアクセスできないページもあります
+loguruをインストール:
+```bash
+pip install loguru
+```
 
-### HTMLの構造が変わった場合
+### ChromeDriverエラー
 
-netkeibaのHTML構造が変更された場合、スクレイパーのコードを調整する必要があります。
-実際のHTMLを確認して、`backend/scraper/`内のファイルを修正してください。
+プロセスを強制終了:
+```bash
+taskkill /F /IM chrome.exe /T
+taskkill /F /IM chromedriver.exe /T
+```
 
-### リクエスト制限に引っかかった場合
+### 途中で停止した
 
-`.env`ファイルの`SCRAPING_DELAY`を増やしてください（例: 5秒）
+進捗を確認して続きから実行:
+```bash
+# 進捗確認
+python check_race_progress.py
+
+# 続きから実行
+python batch_race_detail.py --limit 100
+```
 
 ## ログの確認
 
 ログは`logs/`ディレクトリに保存されます：
 ```bash
 # 最新のログを確認
-tail -f logs/scraper_*.log
+tail -f logs/batch_race_detail_*.log
+
+# エラーのみ確認
+grep "ERROR\|❌" logs/batch_race_detail_*.log
 ```
 
 ## 次のステップ
 
-Phase 1が完了したら、Phase 2（分析機能）に進みます。
+Phase 3-2が完了したら、Phase 4（データ分析）に進みます。
+
+詳細は [CURRENT_STATUS.md](CURRENT_STATUS.md) を参照してください。

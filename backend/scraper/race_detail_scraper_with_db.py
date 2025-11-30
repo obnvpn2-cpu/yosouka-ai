@@ -1,47 +1,69 @@
 """
-レース詳細情報スクレイパー（バッチ処理最適化版）
-race.netkeiba.com/race/result.html から詳細情報を取得してDBに保存
+レース詳細情報スクレイパー（DB更新機能付き）
 """
 import os
 import sys
 import time
 import re
 import sqlite3
-import logging
 from typing import Dict, List, Optional
 from datetime import datetime
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import NoSuchElementException
+from loguru import logger
 
-logger = logging.getLogger(__name__)
 
-
-class RaceDetailScraper:
+class RaceDetailScraperWithDB:
     """レース詳細情報を取得してDBに保存するスクレイパー"""
     
-    def __init__(self, db_path: str = "keiba.db"):
+    def __init__(self, db_path="data/keiba.db", chromedriver_path=None):
         """初期化"""
         self.driver = None
         self.wait = None
         self.db_path = db_path
+        self.chromedriver_path = chromedriver_path
         
     def setup_driver(self):
         """Seleniumドライバーのセットアップ"""
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        
-        self.driver = webdriver.Chrome(options=options)
-        self.driver.implicitly_wait(10)
-        self.wait = WebDriverWait(self.driver, 15)
-        logger.info("WebDriver setup completed")
+        try:
+            options = webdriver.ChromeOptions()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+            
+            if self.chromedriver_path:
+                driver_path = self.chromedriver_path
+            else:
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                driver_path = os.path.join(project_root, 'drivers', 'chromedriver.exe')
+                
+                if not os.path.exists(driver_path):
+                    import shutil
+                    system_driver = shutil.which('chromedriver')
+                    if system_driver:
+                        driver_path = system_driver
+                    else:
+                        raise FileNotFoundError("ChromeDriverが見つかりません。")
+            
+            logger.debug(f"Using ChromeDriver at: {driver_path}")
+            
+            service = Service(driver_path)
+            self.driver = webdriver.Chrome(service=service, options=options)
+            
+            self.driver.implicitly_wait(10)
+            self.wait = WebDriverWait(self.driver, 15)
+            logger.debug("ChromeDriver setup completed!")
+            
+        except Exception as e:
+            logger.error(f"Failed to setup ChromeDriver: {e}")
+            raise
         
     def close_driver(self):
         """ドライバーを閉じる"""
@@ -49,16 +71,15 @@ class RaceDetailScraper:
             try:
                 self.driver.quit()
                 self.driver = None
-                logger.info("WebDriver closed")
             except Exception as e:
                 logger.warning(f"Error closing driver: {e}")
-            
+    
     def scrape_and_update(self, race_id: str, max_retries: int = 3) -> bool:
         """
         レース詳細を取得してDBを更新
         
         Args:
-            race_id: レースID (例: 202505050211)
+            race_id: レースID
             max_retries: 最大リトライ回数
             
         Returns:
@@ -69,26 +90,23 @@ class RaceDetailScraper:
                 logger.info(f"Scraping race_id={race_id} (attempt {attempt}/{max_retries})")
                 
                 # スクレイピング実行
-                race_info = self._scrape_race_details(race_id)
+                race_data = self._scrape_race_details(race_id)
                 
-                if not race_info:
+                if not race_data or not race_data.get('race_info'):
                     logger.warning(f"No data retrieved for race_id={race_id}")
                     if attempt < max_retries:
-                        logger.info(f"Retrying in 5 seconds...")
                         time.sleep(5)
                         continue
                     return False
                 
                 # DB更新
-                success = self._update_database(race_id, race_info)
+                success = self._update_database(race_id, race_data)
                 
                 if success:
                     logger.info(f"✅ Successfully updated race_id={race_id}")
                     return True
                 else:
-                    logger.warning(f"Failed to update database for race_id={race_id}")
                     if attempt < max_retries:
-                        logger.info(f"Retrying in 5 seconds...")
                         time.sleep(5)
                         continue
                     return False
@@ -96,23 +114,14 @@ class RaceDetailScraper:
             except Exception as e:
                 logger.error(f"Error in attempt {attempt} for race_id={race_id}: {e}")
                 if attempt < max_retries:
-                    logger.info(f"Retrying in 5 seconds...")
                     time.sleep(5)
                     continue
                 return False
         
         return False
-            
+    
     def _scrape_race_details(self, race_id: str) -> Optional[Dict]:
-        """
-        レース詳細情報をスクレイピング
-        
-        Args:
-            race_id: レースID
-            
-        Returns:
-            レース詳細情報の辞書、エラー時はNone
-        """
+        """レース詳細をスクレイピング"""
         url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
         
         try:
@@ -120,35 +129,33 @@ class RaceDetailScraper:
                 self.setup_driver()
                 
             self.driver.get(url)
-            time.sleep(2)  # ページ読み込み待機
+            time.sleep(2)
             
-            # レース情報を取得
             race_info = self._extract_race_info()
             
             if not race_info:
-                logger.warning(f"Failed to extract race info for {race_id}")
                 return None
             
-            logger.debug(f"Extracted race info: {race_info}")
-            return race_info
+            return {
+                'race_id': race_id,
+                'race_info': race_info,
+                'scraped_at': datetime.now().isoformat()
+            }
             
         except Exception as e:
             logger.error(f"Error scraping race {race_id}: {e}")
             return None
-            
+    
     def _extract_race_info(self) -> Dict:
-        """レース基本情報を抽出（DB保存用の最小限の情報）"""
+        """レース基本情報を抽出"""
         info = {}
         
         try:
-            # レース名
             race_name_elem = self.driver.find_element(By.CLASS_NAME, "RaceName")
             info['race_name'] = race_name_elem.text.strip().split('\n')[0]
             
-            # レース条件（RaceData01）から距離・トラック取得
             race_data01 = self.driver.find_element(By.CLASS_NAME, "RaceData01").text
             
-            # 距離・トラック
             distance_match = re.search(r'(芝|ダート)(\d+)m', race_data01)
             if distance_match:
                 info['track_type'] = distance_match.group(1)
@@ -157,25 +164,21 @@ class RaceDetailScraper:
                 info['track_type'] = '不明'
                 info['distance'] = 0
                 
-            # 馬場状態
             track_condition_match = re.search(r'馬場:([^\s]+)', race_data01)
             info['track_condition'] = track_condition_match.group(1) if track_condition_match else None
             
-            # レース詳細（RaceData02）から会場取得
             race_data02 = self.driver.find_element(By.CLASS_NAME, "RaceData02").text
             
-            # 開催情報（例：5回東京2日目）
             kaisai_match = re.search(r'(\d+)回\s*(\S+)\s*(\d+)日目', race_data02)
             if kaisai_match:
                 info['venue'] = kaisai_match.group(2)
             else:
                 info['venue'] = '不明'
             
-            # 頭数
             horses_match = re.search(r'(\d+)頭', race_data02)
             info['horse_count'] = int(horses_match.group(1)) if horses_match else 0
             
-            logger.debug(f"Extracted: venue={info.get('venue')}, track_type={info.get('track_type')}, distance={info.get('distance')}")
+            logger.debug(f"Extracted: venue={info.get('venue')}, track={info.get('track_type')}, distance={info.get('distance')}")
             
         except Exception as e:
             logger.error(f"Error extracting race info: {e}")
@@ -183,20 +186,13 @@ class RaceDetailScraper:
             
         return info
     
-    def _update_database(self, race_id: str, race_info: Dict) -> bool:
-        """
-        データベースを更新
-        
-        Args:
-            race_id: レースID
-            race_info: レース情報
-            
-        Returns:
-            成功時True、失敗時False
-        """
+    def _update_database(self, race_id: str, race_data: Dict) -> bool:
+        """データベースを更新"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+            
+            race_info = race_data.get('race_info', {})
             
             # race_idでレコードを検索
             cursor.execute("SELECT id FROM races WHERE race_id = ?", (race_id,))
@@ -228,9 +224,8 @@ class RaceDetailScraper:
             
             conn.commit()
             
-            # 更新確認
             if cursor.rowcount > 0:
-                logger.info(f"Updated race_id={race_id}: venue={race_info.get('venue')}, track={race_info.get('track_type')}, distance={race_info.get('distance')}m")
+                logger.debug(f"Updated race_id={race_id}: {race_info.get('venue')}, {race_info.get('track_type')}, {race_info.get('distance')}m")
                 conn.close()
                 return True
             else:
@@ -245,9 +240,9 @@ class RaceDetailScraper:
             return False
 
 
-def scrape_race_detail(race_id: str, db_path: str = "keiba.db") -> bool:
+def scrape_race_detail(race_id: str, db_path: str = "data/keiba.db") -> bool:
     """
-    単一のレース詳細を取得してDBを更新（バッチ処理用のヘルパー関数）
+    単一のレース詳細を取得してDBを更新（バッチ処理用）
     
     Args:
         race_id: レースID
@@ -256,7 +251,7 @@ def scrape_race_detail(race_id: str, db_path: str = "keiba.db") -> bool:
     Returns:
         成功時True、失敗時False
     """
-    scraper = RaceDetailScraper(db_path)
+    scraper = RaceDetailScraperWithDB(db_path)
     
     try:
         success = scraper.scrape_and_update(race_id)
@@ -265,51 +260,21 @@ def scrape_race_detail(race_id: str, db_path: str = "keiba.db") -> bool:
         scraper.close_driver()
 
 
-def test_scraper():
-    """スクレイパーのテスト"""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+if __name__ == "__main__":
+    logger.remove()
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+        level="INFO"
     )
     
-    logger.info("Starting race detail scraper test...")
+    # テスト
+    test_race_id = "202508040411"
+    logger.info(f"Testing with race_id: {test_race_id}")
     
-    scraper = RaceDetailScraper("keiba.db")
+    success = scrape_race_detail(test_race_id)
     
-    try:
-        # テスト用レースID（エリザベス女王杯G1）
-        test_race_id = "202508040411"
-        
-        logger.info(f"Testing with race_id: {test_race_id}")
-        
-        success = scraper.scrape_and_update(test_race_id)
-        
-        if success:
-            logger.info("✅ Test successful!")
-            
-            # DB確認
-            conn = sqlite3.connect("keiba.db")
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT race_id, race_name, venue, track_type, distance, horse_count
-                FROM races
-                WHERE race_id = ?
-            """, (test_race_id,))
-            row = cursor.fetchone()
-            
-            if row:
-                logger.info(f"DB Record: {row}")
-            
-            conn.close()
-        else:
-            logger.error("❌ Test failed")
-            
-    except Exception as e:
-        logger.exception(f"Test failed: {e}")
-        
-    finally:
-        scraper.close_driver()
-
-
-if __name__ == "__main__":
-    test_scraper()
+    if success:
+        logger.success("✅ Test successful!")
+    else:
+        logger.error("❌ Test failed")
