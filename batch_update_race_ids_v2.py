@@ -252,8 +252,8 @@ class BatchRaceIDUpdater:
                     break
                 
                 # バッチ間で休憩（サーバー負荷軽減）
-                logger.info("次のバッチまで30秒待機...")
-                time.sleep(30)
+                logger.info("次のバッチまで10秒待機...")
+                time.sleep(10)
                 
             # 最終結果
             total_elapsed = time.time() - start_time
