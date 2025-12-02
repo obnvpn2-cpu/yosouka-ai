@@ -1,0 +1,4 @@
+organize_project.sh*
+PROJECT_STATUS.md
+README.md
+RESTART_GUIDE.md
