@@ -1,98 +1,107 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""データベースの現在の状況を確認（成功率表示版）"""
+"""
+データベースの状態を詳しく確認するスクリプト
+"""
 import sqlite3
-from datetime import datetime
+from pathlib import Path
 
-conn = sqlite3.connect('data/keiba.db')
-cursor = conn.cursor()
+db_path = "data/keiba.db"
 
-print("=" * 70)
-print("競馬予想家分析AI - 現在の進捗状況")
-print("=" * 70)
-print(f"確認日時: {datetime.now().strftime('%Y/%m/%d %H:%M:%S')}")
-print()
+print("=" * 60)
+print("データベース状態の詳細確認")
+print("=" * 60)
+print(f"データベースパス: {db_path}")
+print(f"ファイル存在: {Path(db_path).exists()}")
+if Path(db_path).exists():
+    print(f"ファイルサイズ: {Path(db_path).stat().st_size / 1024 / 1024:.2f} MB")
+print("=" * 60)
 
-# 予想家の処理状況
-cursor.execute("SELECT COUNT(*) FROM predictors WHERE total_predictions > 0")
-processed = cursor.fetchone()[0]
-print(f"処理済み予想家: {processed}/186人 ({processed/186*100:.1f}%)")
-print()
-
-# 予想データの統計
-cursor.execute("SELECT COUNT(*) FROM predictions")
-total_predictions = cursor.fetchone()[0]
-
-cursor.execute("""
-    SELECT COUNT(*) 
-    FROM predictions p 
-    JOIN races r ON p.race_id = r.id
-    WHERE r.grade IS NOT NULL
-""")
-grade_predictions = cursor.fetchone()[0]
-
-print(f"総予想数: {total_predictions:,}件")
-print(f"重賞予想数: {grade_predictions:,}件")
-print()
-
-# race_idの状況確認
-cursor.execute("SELECT COUNT(*) FROM races WHERE race_id LIKE 'temp_%'")
-temp_count = cursor.fetchone()[0]
-
-cursor.execute("SELECT COUNT(*) FROM races WHERE race_id NOT LIKE 'temp_%'")
-real_count = cursor.fetchone()[0]
-
-print(f"temp形式のrace_id: {temp_count:,}件")
-print(f"正しいrace_id: {real_count:,}件")
-print()
-
-# 成功率の計算（開始時点のtemp形式を8,995件と仮定）
-initial_temp = 8995  # 開始時点のtemp件数
-processed_count = initial_temp - temp_count
-if processed_count > 0:
-    success_count = real_count - 167  # 開始時点で167件あったので差分を計算
-    # 統合完了分も含めた実際の処理件数
-    actual_processed = initial_temp - temp_count
-    success_rate = (success_count / actual_processed) * 100 if actual_processed > 0 else 0
+try:
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     
-    print("=" * 70)
-    print("race_id更新の進捗")
-    print("=" * 70)
-    print(f"開始時点: {initial_temp:,}件")
-    print(f"処理済み: {processed_count:,}件")
-    print(f"残り: {temp_count:,}件")
-    print(f"進捗率: {(processed_count/initial_temp)*100:.1f}%")
-    print()
-    print(f"成功（新規追加）: {success_count:,}件")
-    print(f"成功（統合完了）: {processed_count - success_count:,}件")
-    print(f"全体の完了率: {success_rate:.1f}%")
-    print("=" * 70)
-    print()
+    # 1. 総レース数
+    cursor.execute("SELECT COUNT(*) FROM races")
+    total_races = cursor.fetchone()[0]
+    print(f"\n【総レース数】")
+    print(f"総レース数: {total_races}件")
+    
+    # 2. track_typeの分布
+    print(f"\n【track_typeの分布】")
+    cursor.execute("""
+        SELECT track_type, COUNT(*) as count
+        FROM races
+        GROUP BY track_type
+        ORDER BY count DESC
+    """)
+    for row in cursor.fetchall():
+        track_type = row[0] if row[0] else 'NULL'
+        count = row[1]
+        print(f"  {track_type}: {count}件 ({count/total_races*100:.1f}%)")
+    
+    # 3. 詳細取得済み（track_typeが'不明'でないもの）
+    cursor.execute("""
+        SELECT COUNT(*) FROM races 
+        WHERE track_type IS NOT NULL AND track_type != '不明'
+    """)
+    completed = cursor.fetchone()[0]
+    print(f"\n【詳細取得状況】")
+    print(f"取得済み: {completed}件 ({completed/total_races*100:.1f}%)")
+    print(f"未取得: {total_races - completed}件 ({(total_races - completed)/total_races*100:.1f}%)")
+    
+    # 4. 未取得レースのサンプル（最初の10件）
+    print(f"\n【未取得レースのサンプル（最初の10件）】")
+    cursor.execute("""
+        SELECT race_id, race_name, race_date, track_type, distance
+        FROM races
+        WHERE track_type = '不明' OR track_type IS NULL
+        ORDER BY race_date
+        LIMIT 10
+    """)
+    print(f"{'race_id':<15} {'race_name':<20} {'race_date':<12} {'track_type':<10} {'distance'}")
+    print("-" * 80)
+    for row in cursor.fetchall():
+        race_id = row[0] if row[0] else 'NULL'
+        race_name = row[1] if row[1] else 'NULL'
+        race_date = row[2] if row[2] else 'NULL'
+        track_type = row[3] if row[3] else 'NULL'
+        distance = row[4] if row[4] else 0
+        print(f"{race_id:<15} {race_name:<20} {race_date:<12} {track_type:<10} {distance}")
+    
+    # 5. JSONファイルの存在確認
+    print(f"\n【JSONファイルの確認】")
+    json_dir = Path("data/race_details")
+    if json_dir.exists():
+        json_files = list(json_dir.glob("race_*.json"))
+        print(f"JSONファイル数: {len(json_files)}件")
+        
+        # 最新のJSONファイルを確認
+        if json_files:
+            latest_json = max(json_files, key=lambda p: p.stat().st_mtime)
+            print(f"最新のJSONファイル: {latest_json.name}")
+            
+            import json
+            with open(latest_json, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            print(f"\nサンプルJSONの内容:")
+            print(f"  race_id: {data.get('race_id')}")
+            if 'race_info' in data:
+                print(f"  race_name: {data['race_info'].get('race_name')}")
+                print(f"  venue: {data['race_info'].get('venue')}")
+                print(f"  track_type: {data['race_info'].get('track_type')}")
+                print(f"  distance: {data['race_info'].get('distance')}")
+    else:
+        print(f"JSONディレクトリが存在しません: {json_dir}")
+    
+    conn.close()
+    
+    print("\n" + "=" * 60)
+    print("確認完了")
+    print("=" * 60)
 
-# レース詳細情報の状況
-cursor.execute("SELECT COUNT(*) FROM races WHERE distance IS NOT NULL AND distance > 0")
-detail_count = cursor.fetchone()[0]
-
-print(f"詳細情報あり: {detail_count:,}件")
-print(f"詳細情報なし: {temp_count + real_count - detail_count:,}件")
-print()
-
-# prediction_idの状況
-cursor.execute("SELECT COUNT(*) FROM predictions WHERE netkeiba_prediction_id IS NOT NULL")
-has_pred_id = cursor.fetchone()[0]
-
-print(f"prediction_idあり: {has_pred_id:,}件")
-print()
-
-print("=" * 70)
-print("次のステップ")
-print("=" * 70)
-if temp_count > 0:
-    print(f"1. race_id更新: {temp_count:,}件のtemp形式を正しいIDに更新")
-    print(f"   -> prediction_idから正しいrace_idを取得")
-if temp_count + real_count - detail_count > 0:
-    print(f"2. レース詳細取得: {temp_count + real_count - detail_count:,}件")
-    print(f"   -> race_detail_scraper.pyを使用")
-print("=" * 70)
-
-conn.close()
+except Exception as e:
+    print(f"エラー: {e}")
+    import traceback
+    traceback.print_exc()

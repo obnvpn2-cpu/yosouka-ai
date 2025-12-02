@@ -192,26 +192,15 @@ class RaceDetailScraperPandas:
                 else:
                     info['grade'] = None
                 
-                # Zenn方式：テキストを単語に分割して個別にチェック
-                # この方法は重賞レースのような複雑な名前でも確実に情報を抽出できる
-                info_words = re.findall(r'\w+', data_intro_text)
-                
-                # デフォルト値を設定
-                info['track_type'] = '不明'
-                info['distance'] = 0
-                
-                for word in info_words:
-                    # 芝/ダートの判定
-                    if word in ["芝", "ダート"]:
-                        info['track_type'] = word
-                    # 障害の判定
-                    if "障" in word:
-                        info['track_type'] = "障害"
-                    # 距離の抽出（"m"を含む単語から数字を抽出）
-                    if "m" in word:
-                        distance_nums = re.findall(r"\d+", word)
-                        if distance_nums:
-                            info['distance'] = int(distance_nums[-1])
+                # 芝/ダート、距離（例: "ダ右1400m"）
+                distance_match = re.search(r'(芝|ダート|ダ)[左右]?(\d+)m', data_intro_text)
+                if distance_match:
+                    track_type_raw = distance_match.group(1)
+                    info['track_type'] = 'ダート' if track_type_raw == 'ダ' else track_type_raw
+                    info['distance'] = int(distance_match.group(2))
+                else:
+                    info['track_type'] = '不明'
+                    info['distance'] = 0
                 
                 # 天候（例: "天候 : 晴"）
                 weather_match = re.search(r'天候\s*:\s*([^\s/]+)', data_intro_text)
