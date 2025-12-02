@@ -30,7 +30,7 @@ Phase 4: データ分析             ░░░░░░░░░░░░░░�
 ## 🎯 プロジェクト概要
 
 ### 目的
-netkeiba掲載の予想家の過去成績を分析し、重賞レースで信頼できる予想家を推薦するシステム
+netkeiba掲載の予想家の過去成績を分析し、指定した条件において信頼できる予想家を推薦するシステム
 
 ### 重要：このプロジェクトは何をするのか
 
@@ -38,8 +38,11 @@ netkeiba掲載の予想家の過去成績を分析し、重賞レースで信頼
 ✅ **正しい**: 優秀な予想家を見つけて推薦するシステム
 
 **具体例**:
+- 入力: 「芝1600mのレースで誰の予想を信じればいい？」
+- 出力: 「芝1600mで的中率82%、回収率115%の予想家Aがおすすめです」
+
 - 入力: 「次の日曜日の天皇賞（秋）、誰の予想を信じればいい？」
-- 出力: 「過去の天皇賞で的中率85%、回収率120%の予想家Aがおすすめです」
+- 出力: 「過去の天皇賞で的中率85%、回収率120%の予想家Bがおすすめです」
 
 ### 主な機能（実装予定）
 1. ✅ 予想家の過去成績データ収集
@@ -47,7 +50,8 @@ netkeiba掲載の予想家の過去成績を分析し、重賞レースで信頼
 3. ⏳ 的中率・回収率の分析
 4. ⏳ 条件別（芝/ダート、距離、競馬場）の成績分析
 5. ⏳ 予想家ランキング生成
-6. ⏳ Web UIでのデータ可視化
+6. ⏳ 条件指定による予想家推薦
+7. ⏳ Web UIでのデータ可視化
 
 ---
 
@@ -67,23 +71,95 @@ netkeiba掲載の予想家の過去成績を分析し、重賞レースで信頼
 ```
 keiba-yosoka-ai/
 ├── backend/
-│   ├── scraper/
-│   │   ├── main.py                          ✅ 予想家データ取得
-│   │   ├── prediction.py                    ✅ 予想履歴取得
-│   │   ├── update_race_ids_v2.py            ✅ race_id更新
-│   │   └── race_detail_scraper_with_db.py   ✅ レース詳細取得
-│   └── models/
-│       └── database.py                      データベースモデル
+│   ├── models/
+│   │   └── database.py                      データベースモデル
+│   └── scraper/
+│       ├── __init__.py
+│       ├── base.py                          スクレイパー基底クラス
+│       ├── main.py                          ✅ 予想家データ取得
+│       ├── prediction.py                    ✅ 予想履歴取得
+│       ├── predictor_list.py                予想家リスト取得
+│       ├── race_detail_scraper_with_db.py   ✅ レース詳細取得（メイン）
+│       ├── race_detail_scraper_full.py      レース詳細取得（フル版）
+│       ├── race_detail_scraper_nologin.py   レース詳細取得（ログイン不要版）
+│       └── debug_login.py                   ログインデバッグ
 ├── data/
 │   ├── keiba.db                             ✅ データベース（3.1MB）
-│   └── race_details/                        ✅ レース詳細JSON（997件）
+│   ├── race_details/                        ✅ レース詳細JSON（997件）
+│   └── failed_logs/                         失敗ログ保存先
+├── docs/
+│   └── archive/                             アーカイブドキュメント
+├── drivers/
+│   └── chromedriver.exe                     Selenium用（必要に応じて）
 ├── logs/                                    実行ログ
-├── venv/                                    仮想環境
-├── .env                                     環境変数
-├── README.md                                ⭐ このファイル
-├── PROJECT_STATUS.md                        ⭐ 現在の状況
-└── RESTART_GUIDE.md                         ⭐ 再開ガイド
+├── yosouka-ai/                              旧ディレクトリ（整理予定）
+│
+├── バッチ処理スクリプト/
+│   ├── batch_race_detail.py                 ✅ レース詳細バッチ取得
+│   ├── batch_update_race_ids.py             race_id一括更新（旧版）
+│   ├── batch_update_race_ids_v2.py          ✅ race_id一括更新（v2）
+│   ├── batch_all_with_interval.sh           全件バッチ（インターバル付き）
+│   └── batch_with_interval.sh               バッチ処理（インターバル付き）
+│
+├── 確認・チェックスクリプト/
+│   ├── check_race_progress.py               ✅ レース詳細取得進捗確認
+│   ├── check_db_status.py                   ✅ データベース状態確認
+│   ├── check_data.py                        データ確認
+│   ├── check_date_range.py                  日付範囲確認
+│   ├── check_pending_json.py                未取得レース確認
+│   ├── check_predictor.py                   予想家確認
+│   ├── check_progress.py                    進捗確認（汎用）
+│   ├── check_race_conditions.py             レース条件確認
+│   ├── check_race_id.py                     race_id確認
+│   └── check_results.py                     結果確認
+│
+├── デバッグ・テストスクリプト/
+│   ├── debug_html.py                        HTML構造デバッグ
+│   ├── debug_html_structure.py              HTML構造詳細デバッグ
+│   ├── debug_pandas_html.py                 pandas版HTML確認
+│   ├── test_fixed_scraper.py                修正版スクレイパーテスト
+│   ├── test_pandas_scraper.py               ✅ pandas版テスト
+│   └── test_prediction.py                   予想データテスト
+│
+├── ユーティリティスクリプト/
+│   ├── update_race_ids.py                   race_id更新（旧版）
+│   ├── update_race_ids_v2.py                race_id更新（v2）
+│   ├── update_db_from_json.py               JSONからDB更新
+│   ├── fix_pending_races.py                 未取得レース修正
+│   ├── inspect_remaining_json.py            残りのJSON検査
+│   ├── export_csv.py                        CSVエクスポート
+│   ├── organize_files.py                    ファイル整理
+│   ├── retry_failed.py                      失敗分リトライ
+│   └── retry_specific.py                    特定レースリトライ
+│
+├── ドキュメント/
+│   ├── README.md                            ⭐ このファイル
+│   ├── PROJECT_STATUS.md                    ⭐ 現在の状況
+│   ├── RESTART_GUIDE.md                     ⭐ 再開ガイド
+│   └── RACE_DETAIL_SCRAPER_GUIDE.md         レース詳細スクレイパーガイド
+│
+├── その他/
+│   ├── requirements.txt                     依存パッケージ
+│   ├── .env                                 環境変数（gitignore）
+│   └── venv/                                仮想環境（gitignore）
 ```
+
+### 主要ファイルの説明
+
+#### バッチ処理（Phase 3で使用）
+- **batch_race_detail.py**: レース詳細を997件バッチ取得（Phase 3-2で使用）
+- **batch_update_race_ids_v2.py**: race_idを一括更新（Phase 3-1で使用）
+
+#### 確認スクリプト
+- **check_race_progress.py**: レース詳細取得の進捗をリアルタイム表示
+- **check_db_status.py**: データベースの状態を詳細表示
+
+#### データ取得（Phase 2で使用）
+- **backend/scraper/main.py**: 予想家データ取得
+- **backend/scraper/prediction.py**: 予想履歴取得
+
+#### レース詳細取得（Phase 3-2で使用）
+- **backend/scraper/race_detail_scraper_with_db.py**: pandas版スクレイパー（メイン）
 
 ---
 
